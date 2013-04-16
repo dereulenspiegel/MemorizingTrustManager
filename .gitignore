@@ -6,3 +6,6 @@ example/gen
 tags
 .project
 .classpath
+/example
+/libs
+/target

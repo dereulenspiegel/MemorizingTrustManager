@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="mtm_accept_cert">Accept Unknown Certificate?</string>
+    <string name="mtm_accept_cert">Do you trust this unknown certificate?</string>
     <string name="mtm_decision_always">Always</string>
     <string name="mtm_decision_once">Once</string>
     <string name="mtm_decision_abort">Abort</string>
 
     <string name="mtm_notification">Certificate Verification</string>
+    <string name="dialog_dn">Distinguished Name:</string>
+    <string name="dialog_md5">MD5:</string>
+    <string name="dialog_SHA1">SHA-1:</string>
+    <string name="dialog_signed_by">Signed by:</string>
+    <string name="dialog_title">SSL Error</string>
 </resources>

@@ -26,29 +26,29 @@
  */
 package de.duenndns.ssl;
 
+import java.io.File;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.MessageDigest;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateExpiredException;
+import java.security.cert.X509Certificate;
+import java.util.HashMap;
+
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
+
 import android.app.Activity;
 import android.app.Application;
-import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.Service;
-import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.net.Uri;
-import android.util.Log;
 import android.os.Handler;
-
-import java.io.File;
-import java.security.cert.*;
-import java.security.KeyStore;
-import java.security.KeyStoreException;
-import java.security.MessageDigest;
-import java.util.HashMap;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
-import javax.net.ssl.X509TrustManager;
+import android.util.Log;
 
 /**
  * A X509 trust manager implementation which asks the user about invalid
@@ -57,16 +57,20 @@ import javax.net.ssl.X509TrustManager;
  * The certificate validity is checked using the system default X509
  * TrustManager, creating a query Dialog if the check fails.
  * <p>
- * <b>WARNING:</b> This only works if a dedicated thread is used for
- * opening sockets!
+ * <b>WARNING:</b> This only works if a dedicated thread is used for opening
+ * sockets!
  */
 public class MemorizingTrustManager implements X509TrustManager {
 	final static String TAG = "MemorizingTrustManager";
-	final static String DECISION_INTENT = "de.duenndns.ssl.DECISION";
-	final static String DECISION_INTENT_APP    = DECISION_INTENT + ".app";
-	final static String DECISION_INTENT_ID     = DECISION_INTENT + ".decisionId";
-	final static String DECISION_INTENT_CERT   = DECISION_INTENT + ".cert";
-	final static String DECISION_INTENT_CHOICE = DECISION_INTENT + ".decisionChoice";
+	final static String DECISION_INTENT_REQUEST = "de.duenndns.ssl.DECISION";
+	final static String DECISION_INTENT_RESPONSE = "de.duenndns.ssl.RESPONSE";
+	final static String DECISION_INTENT_APP = DECISION_INTENT_REQUEST + ".app";
+	final static String DECISION_INTENT_ID = DECISION_INTENT_REQUEST
+			+ ".decisionId";
+	final static String DECISION_INTENT_CERT = DECISION_INTENT_REQUEST
+			+ ".cert";
+	final static String DECISION_INTENT_CHOICE = DECISION_INTENT_REQUEST
+			+ ".decisionChoice";
 	private final static int NOTIFICATION_ID = 100509;
 
 	static String KEYSTORE_DIR = "KeyStore";
@@ -84,31 +88,34 @@ public class MemorizingTrustManager implements X509TrustManager {
 	private X509TrustManager defaultTrustManager;
 	private X509TrustManager appTrustManager;
 
-	/** Creates an instance of the MemorizingTrustManager class.
-	 *
-	 * You need to supply the application context. This has to be one of:
-	 *    - Application
-	 *    - Activity
-	 *    - Service
-	 *
+	/**
+	 * Creates an instance of the MemorizingTrustManager class.
+	 * 
+	 * You need to supply the application context. This has to be one of: -
+	 * Application - Activity - Service
+	 * 
 	 * The context is used for file management, to display the dialog /
 	 * notification and for obtaining translated strings.
-	 *
-	 * @param m Context for the application.
+	 * 
+	 * @param m
+	 *            Context for the application.
 	 */
 	public MemorizingTrustManager(Context m) {
 		master = m;
 		masterHandler = new Handler();
-		notificationManager = (NotificationManager)master.getSystemService(Context.NOTIFICATION_SERVICE);
+		notificationManager = (NotificationManager) master
+				.getSystemService(Context.NOTIFICATION_SERVICE);
 
 		Application app;
 		if (m instanceof Application) {
-			app = (Application)m;
+			app = (Application) m;
 		} else if (m instanceof Service) {
-			app = ((Service)m).getApplication();
+			app = ((Service) m).getApplication();
 		} else if (m instanceof Activity) {
-			app = ((Activity)m).getApplication();
-		} else throw new ClassCastException("MemorizingTrustManager context must be either Activity or Service!");
+			app = ((Activity) m).getApplication();
+		} else
+			throw new ClassCastException(
+					"MemorizingTrustManager context must be either Activity or Service!");
 
 		File dir = app.getDir(KEYSTORE_DIR, Context.MODE_PRIVATE);
 		keyStoreFile = new File(dir + File.separator + KEYSTORE_FILE);
@@ -121,17 +128,19 @@ public class MemorizingTrustManager implements X509TrustManager {
 	/**
 	 * Returns a X509TrustManager list containing a new instance of
 	 * TrustManagerFactory.
-	 *
-	 * This function is meant for convenience only. You can use it
-	 * as follows to integrate TrustManagerFactory for HTTPS sockets:
-	 *
+	 * 
+	 * This function is meant for convenience only. You can use it as follows to
+	 * integrate TrustManagerFactory for HTTPS sockets:
+	 * 
 	 * <pre>
-	 *     SSLContext sc = SSLContext.getInstance("TLS");
-	 *     sc.init(null, MemorizingTrustManager.getInstanceList(this),
-	 *         new java.security.SecureRandom());
-	 *     HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
+	 * SSLContext sc = SSLContext.getInstance(&quot;TLS&quot;);
+	 * sc.init(null, MemorizingTrustManager.getInstanceList(this),
+	 * 		new java.security.SecureRandom());
+	 * HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
 	 * </pre>
-	 * @param c Activity or Service to show the Dialog / Notification
+	 * 
+	 * @param c
+	 *            Activity or Service to show the Dialog / Notification
 	 */
 	public static X509TrustManager[] getInstanceList(Context c) {
 		return new X509TrustManager[] { new MemorizingTrustManager(c) };
@@ -139,42 +148,52 @@ public class MemorizingTrustManager implements X509TrustManager {
 
 	/**
 	 * Binds an Activity to the MTM for displaying the query dialog.
-	 *
-	 * This is useful if your connection is run from a service that is
-	 * triggered by user interaction -- in such cases the activity is
-	 * visible and the user tends to ignore the service notification.
-	 *
-	 * You should never have a hidden activity bound to MTM! Use this
-	 * function in onResume() and @see unbindDisplayActivity in onPause().
-	 *
-	 * @param act Activity to be bound
+	 * 
+	 * This is useful if your connection is run from a service that is triggered
+	 * by user interaction -- in such cases the activity is visible and the user
+	 * tends to ignore the service notification.
+	 * 
+	 * You should never have a hidden activity bound to MTM! Use this function
+	 * in onResume() and @see unbindDisplayActivity in onPause().
+	 * 
+	 * @param act
+	 *            Activity to be bound
 	 */
 	public void bindDisplayActivity(Activity act) {
+		Log.d(TAG, "Binding display activity " + act.getClass().getSimpleName());
 		foregroundAct = act;
 	}
 
 	/**
 	 * Removes an Activity from the MTM display stack.
-	 *
+	 * 
 	 * Always call this function when the Activity added with
+	 * 
 	 * @see bindDisplayActivity is hidden.
-	 *
-	 * @param act Activity to be unbound
+	 * 
+	 * @param act
+	 *            Activity to be unbound
 	 */
 	public void unbindDisplayActivity(Activity act) {
 		// do not remove if it was overridden by a different activity
-		if (foregroundAct == act)
+		Log.d(TAG, "Trying to unbind from activity " + act.getClass().getName());
+		if (foregroundAct == act) {
+			Log.d(TAG, "Unbinding diplay activity "
+					+ act.getClass().getSimpleName());
 			foregroundAct = null;
+		}
 	}
 
 	/**
 	 * Changes the path for the KeyStore file.
-	 *
+	 * 
 	 * The actual filename relative to the app's directory will be
 	 * <code>app_<i>dirname</i>/<i>filename</i></code>.
-	 *
-	 * @param dirname directory to store the KeyStore.
-	 * @param filename file name for the KeyStore.
+	 * 
+	 * @param dirname
+	 *            directory to store the KeyStore.
+	 * @param filename
+	 *            file name for the KeyStore.
 	 */
 	public static void setKeyStoreFile(String dirname, String filename) {
 		KEYSTORE_DIR = dirname;
@@ -187,7 +206,7 @@ public class MemorizingTrustManager implements X509TrustManager {
 			tmf.init(ks);
 			for (TrustManager t : tmf.getTrustManagers()) {
 				if (t instanceof X509TrustManager) {
-					return (X509TrustManager)t;
+					return (X509TrustManager) t;
 				}
 			}
 		} catch (Exception e) {
@@ -209,9 +228,11 @@ public class MemorizingTrustManager implements X509TrustManager {
 		}
 		try {
 			ks.load(null, null);
-			ks.load(new java.io.FileInputStream(keyStoreFile), "MTM".toCharArray());
+			ks.load(new java.io.FileInputStream(keyStoreFile),
+					"MTM".toCharArray());
 		} catch (java.io.FileNotFoundException e) {
-			Log.i(TAG, "getAppKeyStore(" + keyStoreFile + ") - file does not exist");
+			Log.i(TAG, "getAppKeyStore(" + keyStoreFile
+					+ ") - file does not exist");
 		} catch (Exception e) {
 			Log.e(TAG, "getAppKeyStore(" + keyStoreFile + ")", e);
 		}
@@ -227,13 +248,14 @@ public class MemorizingTrustManager implements X509TrustManager {
 			Log.e(TAG, "storeCert(" + chain + ")", e);
 			return;
 		}
-		
+
 		// reload appTrustManager
 		appTrustManager = getTrustManager(appKeyStore);
 
 		// store KeyStore to file
 		try {
-			java.io.FileOutputStream fos = new java.io.FileOutputStream(keyStoreFile);
+			java.io.FileOutputStream fos = new java.io.FileOutputStream(
+					keyStoreFile);
 			appKeyStore.store(fos, "MTM".toCharArray());
 			fos.close();
 		} catch (Exception e) {
@@ -241,7 +263,8 @@ public class MemorizingTrustManager implements X509TrustManager {
 		}
 	}
 
-	// if the certificate is stored in the app key store, it is considered "known"
+	// if the certificate is stored in the app key store, it is considered
+	// "known"
 	private boolean isCertKnown(X509Certificate cert) {
 		try {
 			return appKeyStore.getCertificateAlias(cert) != null;
@@ -259,10 +282,10 @@ public class MemorizingTrustManager implements X509TrustManager {
 		return false;
 	}
 
-	public void checkCertTrusted(X509Certificate[] chain, String authType, boolean isServer)
-		throws CertificateException
-	{
-		Log.d(TAG, "checkCertTrusted(" + chain + ", " + authType + ", " + isServer + ")");
+	public void checkCertTrusted(X509Certificate[] chain, String authType,
+			boolean isServer) throws CertificateException {
+		Log.d(TAG, "checkCertTrusted(" + chain + ", " + authType + ", "
+				+ isServer + ")");
 		try {
 			Log.d(TAG, "checkCertTrusted: trying appTrustManager");
 			if (isServer)
@@ -270,14 +293,17 @@ public class MemorizingTrustManager implements X509TrustManager {
 			else
 				appTrustManager.checkClientTrusted(chain, authType);
 		} catch (CertificateException ae) {
-			// if the cert is stored in our appTrustManager, we ignore expiredness
+			// if the cert is stored in our appTrustManager, we ignore
+			// expiredness
 			ae.printStackTrace();
 			if (isExpiredException(ae)) {
-				Log.i(TAG, "checkCertTrusted: accepting expired certificate from keystore");
+				Log.i(TAG,
+						"checkCertTrusted: accepting expired certificate from keystore");
 				return;
 			}
 			if (isCertKnown(chain[0])) {
-				Log.i(TAG, "checkCertTrusted: accepting cert already stored in keystore");
+				Log.i(TAG,
+						"checkCertTrusted: accepting cert already stored in keystore");
 				return;
 			}
 			try {
@@ -290,30 +316,29 @@ public class MemorizingTrustManager implements X509TrustManager {
 				e.printStackTrace();
 				interact(chain, authType, e);
 			}
+		} catch (Exception e) {
+			Log.e(TAG, "D'Oh", e);
 		}
 	}
 
 	public void checkClientTrusted(X509Certificate[] chain, String authType)
-		throws CertificateException
-	{
+			throws CertificateException {
 		checkCertTrusted(chain, authType, false);
 	}
 
 	public void checkServerTrusted(X509Certificate[] chain, String authType)
-		throws CertificateException
-	{
+			throws CertificateException {
 		checkCertTrusted(chain, authType, true);
 	}
 
-	public X509Certificate[] getAcceptedIssuers()
-	{
+	public X509Certificate[] getAcceptedIssuers() {
 		Log.d(TAG, "getAcceptedIssuers()");
 		return defaultTrustManager.getAcceptedIssuers();
 	}
 
 	private int createDecisionId(MTMDecision d) {
 		int myId;
-		synchronized(openDecisions) {
+		synchronized (openDecisions) {
 			myId = decisionId;
 			openDecisions.put(myId, d);
 			decisionId += 1;
@@ -331,7 +356,7 @@ public class MemorizingTrustManager implements X509TrustManager {
 		return si.toString();
 	}
 
-	private static String certHash(final X509Certificate cert, String digest) {
+	public static String certHash(final X509Certificate cert, String digest) {
 		try {
 			MessageDigest md = MessageDigest.getInstance(digest);
 			md.update(cert.getEncoded());
@@ -343,14 +368,15 @@ public class MemorizingTrustManager implements X509TrustManager {
 		}
 	}
 
-	private String certChainMessage(final X509Certificate[] chain, CertificateException cause) {
+	private String certChainMessage(final X509Certificate[] chain,
+			CertificateException cause) {
 		Throwable e = cause;
 		Log.d(TAG, "certChainMessage for " + e);
 		StringBuffer si = new StringBuffer();
 		if (e.getCause() != null) {
 			e = e.getCause();
 			si.append(e.getLocalizedMessage());
-			//si.append("\n");
+			// si.append("\n");
 		}
 		for (X509Certificate c : chain) {
 			si.append("\n\n");
@@ -365,55 +391,44 @@ public class MemorizingTrustManager implements X509TrustManager {
 		return si.toString();
 	}
 
-	void startActivityNotification(Intent intent, String certName) {
-		Notification n = new Notification(android.R.drawable.ic_lock_lock,
-				master.getString(R.string.mtm_notification),
-				System.currentTimeMillis());
-		PendingIntent call = PendingIntent.getActivity(master, 0, intent, 0);
-		n.setLatestEventInfo(master.getApplicationContext(),
-				master.getString(R.string.mtm_notification),
-				certName, call);
-		n.flags |= Notification.FLAG_AUTO_CANCEL;
-
-		notificationManager.notify(NOTIFICATION_ID, n);
-	}
-
 	/**
 	 * Returns the top-most entry of the activity stack.
-	 *
-	 * @return the Context of the currently bound UI or the master context if none is bound
+	 * 
+	 * @return the Context of the currently bound UI or the master context if
+	 *         none is bound
 	 */
 	Context getUI() {
 		return (foregroundAct != null) ? foregroundAct : master;
 	}
 
-	void interact(final X509Certificate[] chain, String authType, CertificateException cause)
-		throws CertificateException
-	{
+	void interact(final X509Certificate[] chain, String authType,
+			CertificateException cause) throws CertificateException {
 		/* prepare the MTMDecision blocker object */
 		MTMDecision choice = new MTMDecision();
 		final int myId = createDecisionId(choice);
 		final String certMessage = certChainMessage(chain, cause);
 
 		BroadcastReceiver decisionReceiver = new BroadcastReceiver() {
-			public void onReceive(Context ctx, Intent i) { interactResult(i); }
+			public void onReceive(Context ctx, Intent i) {
+				interactResult(i);
+			}
 		};
-		master.registerReceiver(decisionReceiver, new IntentFilter(DECISION_INTENT + "/" + master.getPackageName()));
+		master.registerReceiver(decisionReceiver, new IntentFilter(
+				DECISION_INTENT_RESPONSE));
 		masterHandler.post(new Runnable() {
 			public void run() {
-				Intent ni = new Intent(master, MemorizingActivity.class);
-				ni.setData(Uri.parse(MemorizingTrustManager.class.getName() + "/" + myId));
+				Intent ni = new Intent(DECISION_INTENT_REQUEST);
 				ni.putExtra(DECISION_INTENT_APP, master.getPackageName());
 				ni.putExtra(DECISION_INTENT_ID, myId);
-				ni.putExtra(DECISION_INTENT_CERT, certMessage);
-
-				// we try to directly start the activity and fall back to
-				// making a notification
+				ni.putExtra(DECISION_INTENT_CERT, chain[0]);
+				ni.setPackage(master.getPackageName());
+				Log.d(TAG, "Sending broadcast to get a decision with action: "
+						+ ni.getAction());
 				try {
-					getUI().startActivity(ni);
+					master.sendOrderedBroadcast(ni, null);
 				} catch (Exception e) {
-					Log.e(TAG, "startActivity: " + e);
-					startActivityNotification(ni, certMessage);
+					Log.e(TAG, "startActivity: " + e, e);
+					// startActivityNotification(ni, certMessage);
 				}
 			}
 		});
@@ -421,7 +436,9 @@ public class MemorizingTrustManager implements X509TrustManager {
 		Log.d(TAG, "openDecisions: " + openDecisions);
 		Log.d(TAG, "waiting on " + myId);
 		try {
-			synchronized(choice) { choice.wait(); }
+			synchronized (choice) {
+				choice.wait();
+			}
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
@@ -437,22 +454,39 @@ public class MemorizingTrustManager implements X509TrustManager {
 		}
 	}
 
+	private boolean isForegroundAnActivity() {
+		if (foregroundAct != null) {
+			Log.d(TAG, "Checking Foreground "
+					+ foregroundAct.getClass().getName());
+		} else {
+			Log.e(TAG, "We have no Foreground");
+		}
+		return (foregroundAct != null && foregroundAct instanceof Activity);
+	}
+
+	private Activity getMasterAsActivity() {
+		return (Activity) foregroundAct;
+	}
+
 	public static void interactResult(Intent i) {
-		int decisionId = i.getIntExtra(DECISION_INTENT_ID, MTMDecision.DECISION_INVALID);
-		int choice = i.getIntExtra(DECISION_INTENT_CHOICE, MTMDecision.DECISION_INVALID);
+		int decisionId = i.getIntExtra(DECISION_INTENT_ID,
+				MTMDecision.DECISION_INVALID);
+		int choice = i.getIntExtra(DECISION_INTENT_CHOICE,
+				MTMDecision.DECISION_INVALID);
 		Log.d(TAG, "interactResult: " + decisionId + " chose " + choice);
 		Log.d(TAG, "openDecisions: " + openDecisions);
 
 		MTMDecision d;
-		synchronized(openDecisions) {
-			 d = openDecisions.get(decisionId);
-			 openDecisions.remove(decisionId);
+		synchronized (openDecisions) {
+			d = openDecisions.get(decisionId);
+			openDecisions.remove(decisionId);
 		}
 		if (d == null) {
-			Log.e(TAG, "interactResult: aborting due to stale decision reference!");
+			Log.e(TAG,
+					"interactResult: aborting due to stale decision reference!");
 			return;
 		}
-		synchronized(d) {
+		synchronized (d) {
 			d.state = choice;
 			d.notify();
 		}
