@@ -27,14 +27,18 @@
 package de.duenndns.ssl;
 
 import java.io.File;
+import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateExpiredException;
 import java.security.cert.X509Certificate;
 import java.util.HashMap;
 
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
@@ -489,6 +493,23 @@ public class MemorizingTrustManager implements X509TrustManager {
 		synchronized (d) {
 			d.state = choice;
 			d.notify();
+		}
+	}
+
+	public static void registerTrustManager(Application app)
+			throws TrustManagerException {
+		try {
+			MemorizingTrustManager trustManager = null;
+			SSLContext sc = SSLContext.getInstance("TLS");
+			trustManager = (MemorizingTrustManager) MemorizingTrustManager
+					.getInstanceList(app)[0];
+			sc.init(null, MemorizingTrustManager.getInstanceList(app),
+					new java.security.SecureRandom());
+			SSLContext.setDefault(sc);
+			HttpsURLConnection
+					.setDefaultSSLSocketFactory(sc.getSocketFactory());
+		} catch (Exception e) {
+			throw new TrustManagerException("Can't set up TrustStore", e);
 		}
 	}
 
