@@ -27,11 +27,9 @@
 package de.duenndns.ssl;
 
 import java.io.File;
-import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateExpiredException;
 import java.security.cert.X509Certificate;
@@ -66,19 +64,19 @@ import android.util.Log;
  */
 public class MemorizingTrustManager implements X509TrustManager {
 	final static String TAG = "MemorizingTrustManager";
-	final static String DECISION_INTENT_REQUEST = "de.duenndns.ssl.DECISION";
-	final static String DECISION_INTENT_RESPONSE = "de.duenndns.ssl.RESPONSE";
-	final static String DECISION_INTENT_APP = DECISION_INTENT_REQUEST + ".app";
-	final static String DECISION_INTENT_ID = DECISION_INTENT_REQUEST
+	public final static String DECISION_INTENT_REQUEST = "de.duenndns.ssl.DECISION";
+	public final static String DECISION_INTENT_RESPONSE = "de.duenndns.ssl.RESPONSE";
+	public final static String DECISION_INTENT_APP = DECISION_INTENT_REQUEST + ".app";
+	public final static String DECISION_INTENT_ID = DECISION_INTENT_REQUEST
 			+ ".decisionId";
-	final static String DECISION_INTENT_CERT = DECISION_INTENT_REQUEST
+	public final static String DECISION_INTENT_CERT = DECISION_INTENT_REQUEST
 			+ ".cert";
-	final static String DECISION_INTENT_CHOICE = DECISION_INTENT_REQUEST
+	public final static String DECISION_INTENT_CHOICE = DECISION_INTENT_REQUEST
 			+ ".decisionChoice";
 	private final static int NOTIFICATION_ID = 100509;
 
-	static String KEYSTORE_DIR = "KeyStore";
-	static String KEYSTORE_FILE = "KeyStore.bks";
+	public static String KEYSTORE_DIR = "KeyStore";
+	public static String KEYSTORE_FILE = "KeyStore.bks";
 
 	Context master;
 	Activity foregroundAct;
@@ -299,7 +297,6 @@ public class MemorizingTrustManager implements X509TrustManager {
 		} catch (CertificateException ae) {
 			// if the cert is stored in our appTrustManager, we ignore
 			// expiredness
-			ae.printStackTrace();
 			if (isExpiredException(ae)) {
 				Log.i(TAG,
 						"checkCertTrusted: accepting expired certificate from keystore");
@@ -317,11 +314,10 @@ public class MemorizingTrustManager implements X509TrustManager {
 				else
 					defaultTrustManager.checkClientTrusted(chain, authType);
 			} catch (CertificateException e) {
-				e.printStackTrace();
 				interact(chain, authType, e);
 			}
 		} catch (Exception e) {
-			Log.e(TAG, "D'Oh", e);
+			Log.e(TAG, "Error while checking the certificate", e);
 		}
 	}
 
@@ -499,10 +495,10 @@ public class MemorizingTrustManager implements X509TrustManager {
 	public static void registerTrustManager(Application app)
 			throws TrustManagerException {
 		try {
-			MemorizingTrustManager trustManager = null;
+//			MemorizingTrustManager trustManager = null;
 			SSLContext sc = SSLContext.getInstance("TLS");
-			trustManager = (MemorizingTrustManager) MemorizingTrustManager
-					.getInstanceList(app)[0];
+//			trustManager = (MemorizingTrustManager) MemorizingTrustManager
+//					.getInstanceList(app)[0];
 			sc.init(null, MemorizingTrustManager.getInstanceList(app),
 					new java.security.SecureRandom());
 			SSLContext.setDefault(sc);
