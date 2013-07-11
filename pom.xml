@@ -5,6 +5,19 @@
   <version>0.0.1-SNAPSHOT</version>
   <packaging>apklib</packaging>
   
+  <properties>
+  <!--maven variable which points to your local repository -->
+  	<internal.repo.path>file:///var/lib/jenkins/jobs/mvn-repo/workspace/</internal.repo.path>
+  </properties>
+  
+  <distributionManagement>
+  <repository>
+    <id>internal.repo</id>
+    <name>Internal Repository</name>
+    <url>${internal.repo.path}</url>
+  </repository>
+  </distributionManagement>
+  
   <dependencies>
     <dependency>
       <groupId>com.google.android</groupId>
