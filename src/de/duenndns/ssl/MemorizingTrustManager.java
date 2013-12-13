@@ -43,7 +43,6 @@ import javax.net.ssl.X509TrustManager;
 
 import android.app.Activity;
 import android.app.Application;
-import android.app.NotificationManager;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -63,24 +62,24 @@ import android.util.Log;
  * sockets!
  */
 public class MemorizingTrustManager implements X509TrustManager {
-	final static String TAG = "MemorizingTrustManager";
+	final static String TAG = MemorizingTrustManager.class.getSimpleName();
 	public final static String DECISION_INTENT_REQUEST = "de.duenndns.ssl.DECISION";
 	public final static String DECISION_INTENT_RESPONSE = "de.duenndns.ssl.RESPONSE";
-	public final static String DECISION_INTENT_APP = DECISION_INTENT_REQUEST + ".app";
+	public final static String DECISION_INTENT_APP = DECISION_INTENT_REQUEST
+			+ ".app";
 	public final static String DECISION_INTENT_ID = DECISION_INTENT_REQUEST
 			+ ".decisionId";
 	public final static String DECISION_INTENT_CERT = DECISION_INTENT_REQUEST
 			+ ".cert";
 	public final static String DECISION_INTENT_CHOICE = DECISION_INTENT_REQUEST
 			+ ".decisionChoice";
-	private final static int NOTIFICATION_ID = 100509;
 
 	public static String KEYSTORE_DIR = "KeyStore";
 	public static String KEYSTORE_FILE = "KeyStore.bks";
 
-	Context master;
-	Activity foregroundAct;
-	NotificationManager notificationManager;
+	private static MemorizingTrustManager instance;
+
+	private Context master;
 	private static int decisionId = 0;
 	private static HashMap<Integer, MTMDecision> openDecisions = new HashMap<Integer, MTMDecision>();
 
@@ -89,6 +88,8 @@ public class MemorizingTrustManager implements X509TrustManager {
 	private KeyStore appKeyStore;
 	private X509TrustManager defaultTrustManager;
 	private X509TrustManager appTrustManager;
+
+	private boolean useCertificatePinning = false;
 
 	/**
 	 * Creates an instance of the MemorizingTrustManager class.
@@ -102,11 +103,9 @@ public class MemorizingTrustManager implements X509TrustManager {
 	 * @param m
 	 *            Context for the application.
 	 */
-	public MemorizingTrustManager(Context m) {
+	private MemorizingTrustManager(Context m) {
 		master = m;
 		masterHandler = new Handler();
-		notificationManager = (NotificationManager) master
-				.getSystemService(Context.NOTIFICATION_SERVICE);
 
 		Application app;
 		if (m instanceof Application) {
@@ -127,6 +126,14 @@ public class MemorizingTrustManager implements X509TrustManager {
 		appTrustManager = getTrustManager(appKeyStore);
 	}
 
+	public void setCertificatePinning(boolean doPin) {
+		useCertificatePinning = doPin;
+	}
+	
+	public boolean isUsingCertificatePinning(){
+		return useCertificatePinning;
+	}
+
 	/**
 	 * Returns a X509TrustManager list containing a new instance of
 	 * TrustManagerFactory.
@@ -144,46 +151,15 @@ public class MemorizingTrustManager implements X509TrustManager {
 	 * @param c
 	 *            Activity or Service to show the Dialog / Notification
 	 */
-	public static X509TrustManager[] getInstanceList(Context c) {
-		return new X509TrustManager[] { new MemorizingTrustManager(c) };
+	public static X509TrustManager[] getInstanceList(Application c) {
+		return new X509TrustManager[] { getInstance(c) };
 	}
 
-	/**
-	 * Binds an Activity to the MTM for displaying the query dialog.
-	 * 
-	 * This is useful if your connection is run from a service that is triggered
-	 * by user interaction -- in such cases the activity is visible and the user
-	 * tends to ignore the service notification.
-	 * 
-	 * You should never have a hidden activity bound to MTM! Use this function
-	 * in onResume() and @see unbindDisplayActivity in onPause().
-	 * 
-	 * @param act
-	 *            Activity to be bound
-	 */
-	public void bindDisplayActivity(Activity act) {
-		Log.d(TAG, "Binding display activity " + act.getClass().getSimpleName());
-		foregroundAct = act;
-	}
-
-	/**
-	 * Removes an Activity from the MTM display stack.
-	 * 
-	 * Always call this function when the Activity added with
-	 * 
-	 * @see bindDisplayActivity is hidden.
-	 * 
-	 * @param act
-	 *            Activity to be unbound
-	 */
-	public void unbindDisplayActivity(Activity act) {
-		// do not remove if it was overridden by a different activity
-		Log.d(TAG, "Trying to unbind from activity " + act.getClass().getName());
-		if (foregroundAct == act) {
-			Log.d(TAG, "Unbinding diplay activity "
-					+ act.getClass().getSimpleName());
-			foregroundAct = null;
+	public static MemorizingTrustManager getInstance(Application app) {
+		if (instance == null) {
+			instance = new MemorizingTrustManager(app);
 		}
+		return instance;
 	}
 
 	/**
@@ -288,6 +264,11 @@ public class MemorizingTrustManager implements X509TrustManager {
 			boolean isServer) throws CertificateException {
 		Log.d(TAG, "checkCertTrusted(" + chain + ", " + authType + ", "
 				+ isServer + ")");
+		if (useCertificatePinning && !isCertKnown(chain[0])) {
+			throw new CertificateException();
+		} else if (useCertificatePinning) {
+			return;
+		}
 		try {
 			Log.d(TAG, "checkCertTrusted: trying appTrustManager");
 			if (isServer)
@@ -391,16 +372,6 @@ public class MemorizingTrustManager implements X509TrustManager {
 		return si.toString();
 	}
 
-	/**
-	 * Returns the top-most entry of the activity stack.
-	 * 
-	 * @return the Context of the currently bound UI or the master context if
-	 *         none is bound
-	 */
-	Context getUI() {
-		return (foregroundAct != null) ? foregroundAct : master;
-	}
-
 	void interact(final X509Certificate[] chain, String authType,
 			CertificateException cause) throws CertificateException {
 		/* prepare the MTMDecision blocker object */
@@ -428,7 +399,6 @@ public class MemorizingTrustManager implements X509TrustManager {
 					master.sendOrderedBroadcast(ni, null);
 				} catch (Exception e) {
 					Log.e(TAG, "startActivity: " + e, e);
-					// startActivityNotification(ni, certMessage);
 				}
 			}
 		});
@@ -452,20 +422,6 @@ public class MemorizingTrustManager implements X509TrustManager {
 		default:
 			throw (cause);
 		}
-	}
-
-	private boolean isForegroundAnActivity() {
-		if (foregroundAct != null) {
-			Log.d(TAG, "Checking Foreground "
-					+ foregroundAct.getClass().getName());
-		} else {
-			Log.e(TAG, "We have no Foreground");
-		}
-		return (foregroundAct != null && foregroundAct instanceof Activity);
-	}
-
-	private Activity getMasterAsActivity() {
-		return (Activity) foregroundAct;
 	}
 
 	public static void interactResult(Intent i) {
@@ -495,10 +451,7 @@ public class MemorizingTrustManager implements X509TrustManager {
 	public static void registerTrustManager(Application app)
 			throws TrustManagerException {
 		try {
-//			MemorizingTrustManager trustManager = null;
 			SSLContext sc = SSLContext.getInstance("TLS");
-//			trustManager = (MemorizingTrustManager) MemorizingTrustManager
-//					.getInstanceList(app)[0];
 			sc.init(null, MemorizingTrustManager.getInstanceList(app),
 					new java.security.SecureRandom());
 			SSLContext.setDefault(sc);
